@@ -1,17 +1,17 @@
 import { supabase } from '../config/supabase.js';
-import { abrirSesionSchema, agregarConsumoSchema, cobrarSesionSchema } from '../validations/sesion.schema.js';
+import { abrirMesaSchema, agregarConsumoSchema, cobrarMesaSchema } from '../validations/sesion.schema.js';
 
 export class SesionesController {
-  // 1. POST /abrir: Recibe id_mesa -> Cambia mesa a 'OCUPADA' e inserta nueva sesión
-  async abrir(req, res, next) {
+  // 1. POST /abrir: Recibe id_mesa -> Insert en sesiones_mesa y cambia estado de la mesa a 'OCUPADA'
+  async abrirMesa(req, res, next) {
     try {
-      const { id_mesa } = abrirSesionSchema.parse(req.body);
+      const { id_mesa } = abrirMesaSchema.parse(req.body);
 
       // Verificar estado actual de la mesa
       const { data: mesa, error: errMesa } = await supabase
         .from('mesas')
-        .select('id, estado')
-        .eq('id', id_mesa)
+        .select('id_mesa, tarifa_hora, estado')
+        .eq('id_mesa', id_mesa)
         .single();
 
       if (errMesa || !mesa) {
@@ -19,30 +19,31 @@ export class SesionesController {
       }
 
       if (mesa.estado !== 'LIBRE') {
-        return res.status(409).json({ error: 'La mesa ya se encuentra ocupada o por cobrar', code: 'MESA_OCUPADA' });
+        return res.status(409).json({ error: 'La mesa ya se encuentra ocupada o en otro estado', code: 'MESA_OCUPADA' });
       }
 
       // Cambiar estado de la mesa a 'OCUPADA'
       const { error: errUpdateMesa } = await supabase
         .from('mesas')
         .update({ estado: 'OCUPADA' })
-        .eq('id', id_mesa);
+        .eq('id_mesa', id_mesa);
 
       if (errUpdateMesa) {
         throw new Error(`Error al actualizar estado de mesa: ${errUpdateMesa.message}`);
       }
 
-      // Insertar nueva sesión activa
+      // Insert en la tabla sesiones_mesa registrando tarifa_aplicada
       const { data: sesion, error: errSesion } = await supabase
-        .from('sesiones')
+        .from('sesiones_mesa')
         .insert([
           {
-            mesa_id: id_mesa,
+            id_mesa: id_mesa,
             hora_inicio: new Date().toISOString(),
+            tarifa_aplicada: mesa.tarifa_hora,
             estado: 'ACTIVA'
           }
         ])
-        .select('id')
+        .select('id_sesion, id_mesa, hora_inicio, estado, tarifa_aplicada')
         .single();
 
       if (errSesion) {
@@ -51,7 +52,8 @@ export class SesionesController {
 
       return res.status(201).json({
         mensaje: 'Mesa abierta exitosamente',
-        id_sesion: sesion.id
+        id_sesion: sesion.id_sesion,
+        sesion
       });
     } catch (error) {
       if (error.name === 'ZodError') {
@@ -61,43 +63,47 @@ export class SesionesController {
     }
   }
 
-  // 2. POST /consumo: Recibe id_sesion, id_producto, cantidad -> Añade consumo
-  async consumo(req, res, next) {
+  // 2. POST /consumo: Recibe id_sesion (UUID), id_producto, cantidad -> Insert en consumos_sesion
+  async agregarConsumo(req, res, next) {
     try {
       const { id_sesion, id_producto, cantidad } = agregarConsumoSchema.parse(req.body);
 
-      // Verificar que la sesión esté ACTIVA
+      // Verificar que la sesión existe y está ACTIVA
       const { data: sesion, error: errSesion } = await supabase
-        .from('sesiones')
-        .select('id, estado')
-        .eq('id', id_sesion)
+        .from('sesiones_mesa')
+        .select('id_sesion, estado')
+        .eq('id_sesion', id_sesion)
         .single();
 
       if (errSesion || !sesion || sesion.estado !== 'ACTIVA') {
-        return res.status(400).json({ error: 'La sesión no existe o no está activa', code: 'SESION_INVALIDA' });
+        return res.status(400).json({ error: 'La sesión no existe o no se encuentra activa', code: 'SESION_INVALIDA' });
       }
 
-      // Consultar producto para obtener precio oficial
+      // Consultar producto para obtener el precio_actual
       const { data: producto, error: errProducto } = await supabase
         .from('productos')
-        .select('id, precio')
-        .eq('id', id_producto)
+        .select('id_producto, precio_actual, stock, activo')
+        .eq('id_producto', id_producto)
         .single();
 
       if (errProducto || !producto) {
         return res.status(404).json({ error: 'Producto no encontrado', code: 'PRODUCTO_NOT_FOUND' });
       }
 
-      const precio_unitario = Number(producto.precio);
+      if (!producto.activo) {
+        return res.status(400).json({ error: 'El producto no está activo', code: 'PRODUCTO_INACTIVO' });
+      }
+
+      const precio_unitario = Number(producto.precio_actual);
       const subtotal = Number((precio_unitario * cantidad).toFixed(2));
 
-      // Registrar consumo en consumos_sesion
+      // Insertar consumo en consumos_sesion
       const { data: nuevoConsumo, error: errInsertConsumo } = await supabase
         .from('consumos_sesion')
         .insert([
           {
-            sesion_id: id_sesion,
-            producto_id: id_producto,
+            id_sesion: id_sesion,
+            id_producto: id_producto,
             cantidad,
             precio_unitario,
             subtotal
@@ -111,7 +117,7 @@ export class SesionesController {
       }
 
       return res.status(201).json({
-        mensaje: 'Consumo registrado exitosamente',
+        mensaje: 'Consumo agregado exitosamente',
         consumo: nuevoConsumo
       });
     } catch (error) {
@@ -122,22 +128,16 @@ export class SesionesController {
     }
   }
 
-  // 3. POST /cobrar: Recibe id_sesion -> Regla de cortesía de 3 min + cálculo exacto + FINALIZADA
-  async cobrar(req, res, next) {
+  // 3. POST /cobrar: Recibe id_sesion (UUID) -> Regla crítica de negocio
+  async cobrarMesa(req, res, next) {
     try {
-      const { id_sesion } = cobrarSesionSchema.parse(req.body);
+      const { id_sesion, metodo_pago = 'EFECTIVO' } = cobrarMesaSchema.parse(req.body);
 
-      // Consultar sesión y mesa asociada (para tarifa_hora)
+      // Leer la hora_inicio de la sesión desde Supabase en sesiones_mesa
       const { data: sesion, error: errSesion } = await supabase
-        .from('sesiones')
-        .select(`
-          id,
-          mesa_id,
-          hora_inicio,
-          estado,
-          mesas ( tarifa_hora )
-        `)
-        .eq('id', id_sesion)
+        .from('sesiones_mesa')
+        .select('*, mesas(tarifa_hora)')
+        .eq('id_sesion', id_sesion)
         .single();
 
       if (errSesion || !sesion) {
@@ -145,7 +145,7 @@ export class SesionesController {
       }
 
       if (sesion.estado !== 'ACTIVA') {
-        return res.status(400).json({ error: 'La sesión ya fue cerrada o anulada', code: 'SESION_YA_CERRADA' });
+        return res.status(400).json({ error: 'La sesión ya fue cobrada o no está activa', code: 'SESION_INACTIVA' });
       }
 
       const horaInicio = new Date(sesion.hora_inicio).getTime();
@@ -153,65 +153,70 @@ export class SesionesController {
       const diffMs = Math.max(0, horaActual - horaInicio);
       const minutosTotales = Math.floor(diffMs / (1000 * 60));
 
-      const tarifaHora = Number(sesion.mesas?.tarifa_hora || 15.00);
-      let montoTiempo = 0;
+      const tarifaHora = Number(sesion.tarifa_aplicada || sesion.mesas?.tarifa_hora || 20.00);
+      let totalTiempo = 0;
 
-      // REGLA DE ORO DE TIEMPO:
-      // <= 3 minutos: costo de tiempo es 0.
-      // > 3 minutos: (minutos_totales / 60) * tarifa_hora.
+      // Regla crítica de negocio:
+      // Si la diferencia con la hora actual es menor o igual a 3 minutos (tiempo de gracia), el costo de tiempo es 0.
+      // Si es mayor, calcula (minutos_totales / 60) * tarifa_hora.
       if (minutosTotales > 3) {
         const horasDecimales = minutosTotales / 60;
-        montoTiempo = Number((horasDecimales * tarifaHora).toFixed(2));
+        totalTiempo = Number((horasDecimales * tarifaHora).toFixed(2));
       }
 
-      // Obtener suma de consumos
+      // Sumar consumos registrados
       const { data: consumos, error: errConsumos } = await supabase
         .from('consumos_sesion')
         .select('subtotal')
-        .eq('sesion_id', id_sesion);
+        .eq('id_sesion', id_sesion);
 
       if (errConsumos) {
         throw new Error(`Error al consultar consumos: ${errConsumos.message}`);
       }
 
-      const montoConsumos = (consumos || []).reduce((sum, item) => sum + Number(item.subtotal), 0);
-      const montoTotal = Number((montoTiempo + montoConsumos).toFixed(2));
+      const totalConsumos = (consumos || []).reduce((sum, item) => sum + Number(item.subtotal), 0);
+      const totalPagar = Number((totalTiempo + totalConsumos).toFixed(2));
       const horaFin = new Date().toISOString();
 
       // Actualizar sesión a FINALIZADA
       const { error: errUpdateSesion } = await supabase
-        .from('sesiones')
+        .from('sesiones_mesa')
         .update({
           hora_fin: horaFin,
           minutos_jugados: minutosTotales,
-          monto_tiempo: montoTiempo,
-          monto_consumos: montoConsumos,
-          monto_total: montoTotal,
+          total_tiempo: totalTiempo,
+          total_consumos: totalConsumos,
+          metodo_pago,
           estado: 'FINALIZADA'
         })
-        .eq('id', id_sesion);
+        .eq('id_sesion', id_sesion);
 
       if (errUpdateSesion) {
-        throw new Error(`Error al cerrar sesión: ${errUpdateSesion.message}`);
+        throw new Error(`Error al cerrar la sesión: ${errUpdateSesion.message}`);
       }
 
-      // Liberar mesa a estado 'LIBRE'
+      // Actualizar el estado de la mesa a 'LIBRE'
       const { error: errUpdateMesa } = await supabase
         .from('mesas')
         .update({ estado: 'LIBRE' })
-        .eq('id', sesion.mesa_id);
+        .eq('id_mesa', sesion.id_mesa);
 
       if (errUpdateMesa) {
-        throw new Error(`Error al liberar mesa: ${errUpdateMesa.message}`);
+        throw new Error(`Error al liberar la mesa: ${errUpdateMesa.message}`);
       }
 
       return res.json({
-        mensaje: 'Mesa cobrada y liberada exitosamente',
-        id_sesion: sesion.id,
+        mensaje: 'Mesa cobrada exitosamente',
+        id_sesion: sesion.id_sesion,
+        id_mesa: sesion.id_mesa,
+        hora_inicio: sesion.hora_inicio,
+        hora_fin: horaFin,
         minutos_jugados: minutosTotales,
-        monto_tiempo: montoTiempo,
-        monto_consumos: montoConsumos,
-        monto_total: montoTotal
+        tarifa_hora: tarifaHora,
+        total_tiempo: totalTiempo,
+        total_consumos: totalConsumos,
+        total_pagar: totalPagar,
+        estado: 'FINALIZADA'
       });
     } catch (error) {
       if (error.name === 'ZodError') {
@@ -223,3 +228,5 @@ export class SesionesController {
 }
 
 export default new SesionesController();
+
+
