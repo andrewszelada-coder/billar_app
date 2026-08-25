@@ -29,6 +29,8 @@ app.use('/api', rateLimiter);
 
 // Rutas de API
 app.use('/api/sesiones', sesionesRouter);
+app.use('/api', sesionesRouter);
+
 
 // Manejador de errores global
 app.use((err, req, res, next) => {

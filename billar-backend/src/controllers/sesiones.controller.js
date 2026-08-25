@@ -225,6 +225,44 @@ export class SesionesController {
       next(error);
     }
   }
+  // 0. GET /mesas: Consulta todas las mesas e incluye la sesión activa (hora_inicio, id_sesion) si la mesa está OCUPADA
+  async listarMesas(req, res, next) {
+    try {
+      const { data: mesas, error: errMesas } = await supabase
+        .from('mesas')
+        .select('*')
+        .order('id_mesa', { ascending: true });
+
+      if (errMesas) {
+        throw new Error(`Error al consultar mesas: ${errMesas.message}`);
+      }
+
+      // Obtener sesiones activas para relacionar hora_inicio
+      const { data: sesionesActivas, error: errSesiones } = await supabase
+        .from('sesiones_mesa')
+        .select('id_sesion, id_mesa, hora_inicio, tarifa_aplicada, estado')
+        .eq('estado', 'ACTIVA');
+
+      if (errSesiones) {
+        console.warn('Error obteniendo sesiones activas:', errSesiones.message);
+      }
+
+      const sesionesMap = new Map();
+      (sesionesActivas || []).forEach(s => sesionesMap.set(s.id_mesa, s));
+
+      const mesasConSesion = mesas.map(m => {
+        const sesionActiva = m.estado === 'OCUPADA' ? sesionesMap.get(m.id_mesa) || null : null;
+        return {
+          ...m,
+          sesion_activa: sesionActiva
+        };
+      });
+
+      return res.json(mesasConSesion);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new SesionesController();
