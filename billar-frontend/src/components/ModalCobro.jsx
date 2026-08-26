@@ -1,111 +1,138 @@
 import React, { useState } from 'react';
-import { X, Banknote, CreditCard, QrCode } from 'lucide-react';
 
-const ModalCobro = ({ mesa, onClose, onCobrar, cargando }) => {
+const ModalCobro = ({ mesa, resumenCobro, onClose, onConfirmCheckout }) => {
   const [metodoPago, setMetodoPago] = useState('EFECTIVO');
+  const [loading, setLoading] = useState(false);
 
-  if (!mesa) return null;
-
-  const sesionId = mesa.sesion_activa?.id_sesion;
-
-  const handleCobrarSubmit = () => {
-    if (!sesionId) return;
-    onCobrar({ id_sesion: sesionId, metodo_pago: metodoPago });
+  const handleProcessCheckout = async () => {
+    setLoading(true);
+    try {
+      await onConfirmCheckout(mesa, metodoPago);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/70 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden text-slate-100">
-        
-        {/* Header Modal */}
-        <div className="flex justify-between items-center px-6 py-5 border-b border-slate-800 bg-rose-950/40">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-rose-500/20 border border-rose-500/40 rounded-xl text-rose-400">
-              <Banknote className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-rose-400">Facturación & Cierre</span>
-              <h2 className="text-xl font-black text-white">{mesa.numero} ({mesa.tipo})</h2>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-full transition cursor-pointer"
-          >
-            <X className="w-6 h-6" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-6 text-slate-800 dark:text-slate-100 relative">
+        {/* Botón X de Cierre Obligatorio */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 dark:hover:text-white bg-slate-100 dark:bg-slate-700 rounded-full w-9 h-9 flex items-center justify-center font-bold text-lg cursor-pointer transition-colors"
+          title="Cerrar modal"
+        >
+          ✕
+        </button>
+
+        {/* Header Recibo */}
+        <div className="border-b border-slate-100 dark:border-slate-700 pb-3">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white">Ticket / Recibo - {mesa?.numero}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Detalle de liquidación de tiempo y consumos</p>
         </div>
 
-        {/* Body Modal */}
-        <div className="p-6 space-y-6">
-          <div className="text-center space-y-1 bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              Sesión Activa
+        {/* Detalle Ticket Digital Super Limpio */}
+        <div className="space-y-3 bg-slate-50 dark:bg-slate-900/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 text-sm">
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
+            <span>Tiempo Jugado Total:</span>
+            <span className="font-bold font-mono text-slate-900 dark:text-white text-base">
+              {resumenCobro?.minutos_jugados || 0} min
             </span>
-            <div className="font-mono text-sm text-slate-300">
-              ID: {sesionId ? `${sesionId.substring(0, 8)}...` : 'N/A'}
-            </div>
           </div>
 
-          {/* Selección de Método de Pago Touch */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-              Seleccionar Método de Pago
-            </label>
-            
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setMetodoPago('EFECTIVO')}
-                className={`py-3.5 px-2 rounded-2xl font-black text-xs uppercase tracking-wider border flex flex-col items-center gap-2 transition cursor-pointer ${
-                  metodoPago === 'EFECTIVO'
-                    ? 'bg-rose-500 text-white border-rose-400 ring-2 ring-rose-500/50 shadow-lg shadow-rose-950/50'
-                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                }`}
-              >
-                <Banknote className="w-6 h-6" />
-                Efectivo
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMetodoPago('QR')}
-                className={`py-3.5 px-2 rounded-2xl font-black text-xs uppercase tracking-wider border flex flex-col items-center gap-2 transition cursor-pointer ${
-                  metodoPago === 'QR'
-                    ? 'bg-rose-500 text-white border-rose-400 ring-2 ring-rose-500/50 shadow-lg shadow-rose-950/50'
-                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                }`}
-              >
-                <QrCode className="w-6 h-6" />
-                Pago QR
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMetodoPago('TARJETA')}
-                className={`py-3.5 px-2 rounded-2xl font-black text-xs uppercase tracking-wider border flex flex-col items-center gap-2 transition cursor-pointer ${
-                  metodoPago === 'TARJETA'
-                    ? 'bg-rose-500 text-white border-rose-400 ring-2 ring-rose-500/50 shadow-lg shadow-rose-950/50'
-                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                }`}
-              >
-                <CreditCard className="w-6 h-6" />
-                Tarjeta
-              </button>
-            </div>
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
+            <span>Cobro por Tiempo (Bs {mesa?.tarifa_hora}/hr):</span>
+            <span className="font-bold font-mono text-slate-900 dark:text-white text-base">
+              Bs {Number(resumenCobro?.total_tiempo || 0).toFixed(2)}
+            </span>
           </div>
 
-          {/* Botón Gigante de Confirmación de Pago */}
-          <button
-            onClick={handleCobrarSubmit}
-            disabled={cargando}
-            className="w-full py-4 text-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-black rounded-2xl uppercase tracking-wider flex items-center justify-center gap-3 shadow-xl shadow-rose-950/70 transition cursor-pointer"
-          >
-            <Banknote className="w-7 h-7" />
-            FINALIZAR Y COBRAR
-          </button>
+          {resumenCobro?.total_tiempo === 0 && (resumenCobro?.minutos_jugados || 0) > 0 && (
+            <div className="text-xs text-amber-700 dark:text-amber-400 font-bold bg-amber-100 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 p-2 rounded-lg text-center">
+              ✓ Minutos de Gracia Aplicados (Costo de tiempo = Bs 0.00)
+            </div>
+          )}
+
+          <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 border-t border-slate-200 dark:border-slate-800 pt-2">
+            <span>Total Consumos Productos:</span>
+            <span className="font-bold font-mono text-slate-900 dark:text-white text-base">
+              Bs {Number(resumenCobro?.total_consumos || 0).toFixed(2)}
+            </span>
+          </div>
+
+          {/* Desglose de Consumos */}
+          {resumenCobro?.consumos && resumenCobro.consumos.length > 0 && (
+            <div className="mt-2 space-y-1.5 border-t border-slate-200 dark:border-slate-800/80 pt-2 text-xs">
+              <span className="font-bold text-slate-400 block uppercase">Detalle de Productos:</span>
+              {resumenCobro.consumos.map((item, idx) => (
+                <div key={idx} className="flex justify-between text-slate-600 dark:text-slate-300">
+                  <span>{item.cantidad}x {item.productos?.nombre || 'Producto'}</span>
+                  <span className="font-mono">Bs {Number(item.subtotal).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-between items-center border-t border-slate-300 dark:border-slate-700 pt-3 text-lg font-black text-slate-900 dark:text-white">
+            <span>TOTAL A PAGAR:</span>
+            <span className="text-2xl font-mono text-emerald-600 dark:text-emerald-400">
+              Bs {Number(resumenCobro?.total_pagar || 0).toFixed(2)}
+            </span>
+          </div>
         </div>
 
+        {/* Métodos de Pago: Exclusivamente EFECTIVO y TRANSFERENCIA */}
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Método de Pago</label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setMetodoPago('EFECTIVO')}
+              className={`py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all cursor-pointer border flex items-center justify-center gap-2 ${
+                metodoPago === 'EFECTIVO'
+                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <span className="text-lg">💵</span>
+              <span>Efectivo</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMetodoPago('TRANSFERENCIA')}
+              className={`py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all cursor-pointer border flex items-center justify-center gap-2 ${
+                metodoPago === 'TRANSFERENCIA'
+                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <span className="text-lg">📱</span>
+              <span>Transferencia</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Acciones */}
+        <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-700/80">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-base transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleProcessCheckout}
+            disabled={loading}
+            className="px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white font-extrabold rounded-xl text-base transition-colors cursor-pointer shadow-md disabled:opacity-50"
+          >
+            {loading ? 'Procesando...' : 'Confirmar Cobro y Liberar'}
+          </button>
+        </div>
       </div>
     </div>
   );

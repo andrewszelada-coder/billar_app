@@ -1,137 +1,156 @@
-import React from 'react';
-import useTimer from '../hooks/useTimer';
+import React, { useState, useEffect } from 'react';
 
-const MesaCard = ({ mesa, isSelected, onSelect, onOpenTable, onAddItem, onCheckout }) => {
-  const isOccupied = mesa.estado === 'OCUPADA';
-  const isPending = mesa.estado === 'POR_COBRAR' || mesa.estado === 'PENDING';
-  const isAvailable = !isOccupied && !isPending;
+const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, onPause, onResume, onAddConsumo, onCheckout }) => {
+  const { id_mesa, numero, estado, tarifa_hora, sesion_activa } = mesa;
+  const [segundosTotales, setSegundosTotales] = useState(0);
 
-  const horaInicio = mesa.sesion_activa?.hora_inicio;
-  const tarifaHora = Number(mesa.tarifa_hora || 20);
-  const { formattedTime, totalMinutes } = useTimer(isOccupied ? horaInicio : null);
+  useEffect(() => {
+    let interval = null;
+    if (estado === 'OCUPADA' && sesion_activa) {
+      const updateTimer = () => {
+        const horaInicio = new Date(sesion_activa.hora_inicio).getTime();
+        const horaActual = new Date().getTime();
+        const segundosActuales = Math.floor(Math.max(0, horaActual - horaInicio) / 1000);
+        const acumuladosSegundos = (sesion_activa.minutos_acumulados || 0) * 60;
+        setSegundosTotales(acumuladosSegundos + segundosActuales);
+      };
 
-  // Cálculo en tiempo real
-  const esGracia = isOccupied && totalMinutes <= 3;
-  const currentBill = esGracia ? 0 : Number(((totalMinutes / 60) * tarifaHora).toFixed(2));
+      updateTimer();
+      interval = setInterval(updateTimer, 1000); // Actualización segundo a segundo
+    } else if (estado === 'PAUSADA' && sesion_activa) {
+      setSegundosTotales((sesion_activa.minutos_acumulados || 0) * 60);
+    } else {
+      setSegundosTotales(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [estado, sesion_activa]);
+
+  const formatTiempoHHMMSS = (totalSecs) => {
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const minutosTranscurridos = Math.floor(segundosTotales / 60);
+
+  const getBadgeStyle = () => {
+    switch (estado) {
+      case 'LIBRE':
+        return {
+          cardBg: 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/80 hover:border-emerald-500 shadow-sm hover:shadow-md',
+          badgeBg: 'bg-emerald-600 text-white',
+          statusText: 'LIBRE'
+        };
+      case 'OCUPADA':
+        return {
+          cardBg: 'bg-white dark:bg-slate-800 border-amber-500/50 dark:border-amber-600/50 shadow-md shadow-amber-500/5',
+          badgeBg: 'bg-amber-600 text-white',
+          statusText: 'OCUPADA'
+        };
+      case 'PAUSADA':
+        return {
+          cardBg: 'bg-slate-50 dark:bg-slate-800/80 border-slate-300 dark:border-slate-600',
+          badgeBg: 'bg-slate-600 text-slate-100',
+          statusText: 'PAUSADA'
+        };
+      default:
+        return {
+          cardBg: 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700',
+          badgeBg: 'bg-slate-700 text-white',
+          statusText: estado
+        };
+    }
+  };
+
+  const style = getBadgeStyle();
 
   return (
-    <div
-      onClick={() => onSelect(mesa)}
-      className={`bg-surface-container-lowest shadow-sm rounded-lg p-4 flex flex-col gap-4 relative overflow-hidden group hover:border-electric-cyan transition-colors cursor-pointer ${
-        isSelected ? 'ring-2 ring-electric-cyan' : ''
-      } ${
-        isOccupied
-          ? 'border-l-4 border-electric-purple'
-          : isPending
-          ? 'border-l-4 border-tertiary-container'
-          : 'border border-outline-variant'
-      }`}
-    >
-      {/* Header Card */}
-      <div className="flex justify-between items-start">
-        <h3 className="font-headline-md text-headline-md text-on-surface">{mesa.numero}</h3>
-        {isOccupied && (
-          <span className="bg-electric-purple text-on-secondary-container px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
-            Occupied
-          </span>
-        )}
-        {isPending && (
-          <span className="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-xs font-bold uppercase tracking-wider animate-pulse">
-            Pending
-          </span>
-        )}
-        {isAvailable && (
-          <span className="bg-surface-container-high text-on-surface-variant border border-outline-variant px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
-            Available
+    <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition-all space-y-4 ${style.cardBg}`}>
+      {/* Encabezado */}
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/80 pb-3">
+        <div>
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{numero}</h2>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tarifa: Bs {tarifa_hora}/hr</span>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase ${style.badgeBg}`}>
+          {style.statusText}
+        </span>
+      </div>
+
+      {/* Reloj Digital HH:MM:SS */}
+      <div className="bg-slate-50 dark:bg-slate-900/80 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/60 text-center space-y-1">
+        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Tiempo Transcurrido</span>
+        <div className="text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400 tracking-wider">
+          {formatTiempoHHMMSS(segundosTotales)}
+        </div>
+        {habilitarGracia && estado === 'OCUPADA' && minutosTranscurridos <= minutosGracia && (
+          <span className="inline-block text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
+            Gracia Inicial ({minutosGracia} min)
           </span>
         )}
       </div>
 
-      {/* Body Card */}
-      {isOccupied && (
-        <div className="flex flex-col items-center justify-center py-4">
-          <div className="font-stats-number text-stats-number text-electric-cyan font-mono tracking-widest">
-            {formattedTime}
-          </div>
-          <div className="font-body-md text-body-md text-on-surface-variant mt-1">
-            Current Bill: <span className="text-on-surface font-bold">${currentBill.toFixed(2)}</span>
-          </div>
-        </div>
-      )}
-
-      {isPending && (
-        <div className="flex flex-col items-center justify-center py-4">
-          <div className="font-label-md text-label-md text-on-surface-variant mb-1">Total Due</div>
-          <div className="font-stats-number text-stats-number text-tertiary-container">
-            ${currentBill.toFixed(2)}
-          </div>
-        </div>
-      )}
-
-      {isAvailable && (
-        <div className="flex-1 flex flex-col items-center justify-center py-6 text-outline-variant">
-          <span
-            className="material-symbols-outlined text-6xl mb-2"
-            data-icon="sports_esports"
-            style={{ fontVariationSettings: "'FILL' 0" }}
-          >
-            sports_esports
-          </span>
-          <span className="font-body-md text-body-md">Ready for play</span>
-        </div>
-      )}
-
-      {/* Footer Actions */}
-      {isOccupied && (
-        <div className="grid grid-cols-2 gap-2 mt-auto">
+      {/* Acciones */}
+      <div className="space-y-2 pt-1">
+        {estado === 'LIBRE' && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddItem(mesa);
-            }}
-            className="border-2 border-electric-cyan text-on-surface font-bold hover:bg-surface-container-low font-label-md text-label-md py-2 rounded transition-colors text-center cursor-pointer"
+            onClick={() => onStart(id_mesa)}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3 rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
           >
-            Add Item
+            <span>▶</span> Iniciar Hora
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCheckout(mesa);
-            }}
-            className="bg-electric-cyan text-on-primary-fixed font-bold font-label-md text-label-md py-2 rounded hover:opacity-90 transition-opacity text-center cursor-pointer"
-          >
-            Checkout
-          </button>
-        </div>
-      )}
+        )}
 
-      {isPending && (
-        <div className="flex flex-col gap-2 mt-auto">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCheckout(mesa);
-            }}
-            className="w-full bg-tertiary-container text-on-tertiary-container font-label-md text-label-md py-3 rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2 font-bold cursor-pointer"
-          >
-            <span className="material-symbols-outlined" data-icon="payments">payments</span>
-            Process Payment
-          </button>
-        </div>
-      )}
+        {estado === 'OCUPADA' && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onPause(sesion_activa?.id_sesion)}
+              className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 border border-slate-300 dark:border-slate-600"
+            >
+              <span>⏸</span> Pausar
+            </button>
+            <button
+              onClick={() => onAddConsumo(mesa)}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+            >
+              <span>🥤</span> + Consumo
+            </button>
+            <button
+              onClick={() => onCheckout(mesa)}
+              className="col-span-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold py-2.5 rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+            >
+              <span>🏁</span> Cobrar Mesa
+            </button>
+          </div>
+        )}
 
-      {isAvailable && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenTable(mesa.id_mesa);
-          }}
-          className="w-full bg-surface-variant text-on-surface hover:bg-surface-container-highest border border-outline-variant font-label-md text-label-md py-3 rounded transition-colors mt-auto flex items-center justify-center gap-2 font-bold cursor-pointer"
-        >
-          <span className="material-symbols-outlined" data-icon="play_arrow">play_arrow</span>
-          Open Table
-        </button>
-      )}
+        {estado === 'PAUSADA' && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onResume(sesion_activa?.id_sesion)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+            >
+              <span>▶</span> Reanudar
+            </button>
+            <button
+              onClick={() => onAddConsumo(mesa)}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+            >
+              <span>🥤</span> + Consumo
+            </button>
+            <button
+              onClick={() => onCheckout(mesa)}
+              className="col-span-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold py-2.5 rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+            >
+              <span>🏁</span> Cobrar Mesa
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

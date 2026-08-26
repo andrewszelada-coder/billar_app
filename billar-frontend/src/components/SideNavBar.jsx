@@ -1,45 +1,70 @@
 import React from 'react';
 
-const SideNavBar = ({ onOpenNewTable }) => {
+const SideNavBar = ({ onOpenNewTable, activeTab = 'mapa' }) => {
   return (
-    <aside className="hidden md:flex flex-col bg-surface-container h-full w-64 border-r border-outline-variant py-component-padding-y px-4 gap-2 shrink-0 z-40">
-      <div className="mb-4 px-2">
-        <h2 className="font-headline-md text-headline-md text-electric-cyan">BilliardOS</h2>
-        <p className="font-label-md text-label-md text-on-surface-variant mt-1">Main Hall Terminal</p>
+    <aside className="hidden md:flex flex-col bg-[#f8fafc] w-64 border-r border-gray-200 p-4 shrink-0 z-40 h-full">
+      <div className="mb-6 px-1">
+        <h2 className="font-extrabold text-xl text-[#00dbe9] tracking-tight">BilliardOS</h2>
+        <p className="text-xs font-medium text-gray-500 mt-0.5">Terminal Principal</p>
       </div>
+
       <button
         onClick={onOpenNewTable}
-        className="w-full bg-electric-cyan text-on-primary-fixed font-label-md text-label-md py-3 rounded-lg mb-4 hover:opacity-90 transition-opacity flex items-center justify-center gap-2 font-bold cursor-pointer"
+        className="w-full bg-[#00dbe9] text-[#002022] font-bold py-2.5 px-4 rounded-xl mb-6 hover:brightness-95 transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer active:scale-98"
       >
-        <span className="material-symbols-outlined" data-icon="add" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-        Open New Table
+        <span className="material-symbols-outlined text-[20px]">add</span>
+        Abrir Nueva Mesa
       </button>
-      <nav className="flex-1 flex flex-col gap-2 font-label-md text-label-md">
-        <a className="flex items-center gap-3 px-3 py-2 bg-electric-purple text-on-secondary-container rounded-lg active:translate-x-1 transition-transform" href="#">
-          <span className="material-symbols-outlined" data-icon="map">map</span>
-          Floor Map
+
+      <nav className="flex-1 flex flex-col gap-1 text-sm font-medium">
+        <a
+          href="#"
+          className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all ${
+            activeTab === 'mapa'
+              ? 'bg-[#cf5cff] text-white font-semibold shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[20px]">map</span>
+          Mapa de Mesas
         </a>
-        <a className="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors rounded-lg active:translate-x-1 transition-transform" href="#">
-          <span className="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
-          Inventory
+        <a
+          href="#"
+          className="flex items-center gap-3 px-3.5 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200/60 rounded-xl transition-all"
+        >
+          <span className="material-symbols-outlined text-[20px]">inventory_2</span>
+          Inventario
         </a>
-        <a className="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors rounded-lg active:translate-x-1 transition-transform" href="#">
-          <span className="material-symbols-outlined" data-icon="group">group</span>
-          Customers
+        <a
+          href="#"
+          className="flex items-center gap-3 px-3.5 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200/60 rounded-xl transition-all"
+        >
+          <span className="material-symbols-outlined text-[20px]">group</span>
+          Clientes
         </a>
-        <a className="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors rounded-lg active:translate-x-1 transition-transform" href="#">
-          <span className="material-symbols-outlined" data-icon="assessment">assessment</span>
-          Reports
+        <a
+          href="#"
+          className="flex items-center gap-3 px-3.5 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200/60 rounded-xl transition-all"
+        >
+          <span className="material-symbols-outlined text-[20px]">assessment</span>
+          Reportes
         </a>
-        <a className="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors rounded-lg active:translate-x-1 transition-transform" href="#">
-          <span className="material-symbols-outlined" data-icon="schedule">schedule</span>
-          Shift Info
+        <a
+          href="#"
+          className="flex items-center gap-3 px-3.5 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200/60 rounded-xl transition-all"
+        >
+          <span className="material-symbols-outlined text-[20px]">schedule</span>
+          Info Turno
         </a>
       </nav>
-      <div className="mt-auto">
-        <a className="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors rounded-lg font-label-md text-label-md active:translate-x-1 transition-transform" href="#">
-          <span className="material-symbols-outlined" data-icon="logout">logout</span>
-          Logout
+
+      <div className="mt-auto pt-4 border-t border-gray-200">
+        <a
+          href="#"
+          className="flex items-center gap-3 px-3.5 py-2.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-medium"
+        >
+          <span className="material-symbols-outlined text-[20px]">logout</span>
+          Cerrar Sesión
         </a>
       </div>
     </aside>

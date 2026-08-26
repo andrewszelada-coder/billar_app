@@ -1,92 +1,79 @@
 import React, { useState } from 'react';
-import { X, Plus, Utensils, Check } from 'lucide-react';
 
-const ModalConsumo = ({ mesa, productos, onClose, onAgregarConsumo, cargando }) => {
-  const [productoSeleccionado, setProductoSeleccionado] = useState(productos[0]?.id_producto || '');
+const ModalConsumo = ({ mesa, productos, onClose, onConfirm }) => {
+  const [selectedProductoId, setSelectedProductoId] = useState(productos[0]?.id_producto || '');
   const [cantidad, setCantidad] = useState(1);
-  const [mensajeExito, setMensajeExito] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  if (!mesa) return null;
+  const productoSeleccionado = productos.find(
+    (p) => String(p.id_producto) === String(selectedProductoId)
+  );
 
-  const sesionId = mesa.sesion_activa?.id_sesion;
+  const subtotal = productoSeleccionado
+    ? (Number(productoSeleccionado.precio_actual) * Number(cantidad)).toFixed(2)
+    : '0.00';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!productoSeleccionado || !sesionId) return;
+    if (!selectedProductoId || !mesa?.sesion_activa?.id_sesion) return;
 
+    setLoading(true);
     try {
-      await onAgregarConsumo({
-        id_sesion: sesionId,
-        id_producto: Number(productoSeleccionado),
+      await onConfirm({
+        id_sesion: mesa.sesion_activa.id_sesion,
+        id_producto: Number(selectedProductoId),
         cantidad: Number(cantidad)
       });
-      setMensajeExito('¡Consumo registrado exitosamente!');
-      setTimeout(() => {
-        setMensajeExito('');
-        onClose();
-      }, 1500);
+      onClose();
     } catch (err) {
-      alert(err.response?.data?.error || 'Error al registrar consumo');
+      console.error('Error al agregar consumo:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/70 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden text-slate-100">
-        
-        {/* Header Modal */}
-        <div className="flex justify-between items-center px-6 py-5 border-b border-slate-800 bg-slate-800/80">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
-              <Utensils className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Comanda de Consumo</span>
-              <h2 className="text-xl font-black text-white">{mesa.numero}</h2>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-full transition cursor-pointer"
-          >
-            <X className="w-6 h-6" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-6 text-slate-800 dark:text-slate-100 relative">
+        {/* Botón X de Cierre Obligatorio */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 dark:hover:text-white bg-slate-100 dark:bg-slate-700 rounded-full w-9 h-9 flex items-center justify-center font-bold text-lg cursor-pointer transition-colors"
+          title="Cerrar modal"
+        >
+          ✕
+        </button>
+
+        {/* Encabezado */}
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white">Añadir Consumo a {mesa?.numero}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Carga productos directamente a la cuenta activa</p>
         </div>
 
-        {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {mensajeExito && (
-            <div className="p-3.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-2xl text-sm font-bold flex items-center gap-2">
-              <Check className="w-5 h-5 text-emerald-400" /> {mensajeExito}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Producto / Bebida / Snack
-            </label>
+        {/* Formulario */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Seleccionar Producto</label>
             <select
-              value={productoSeleccionado}
-              onChange={(e) => setProductoSeleccionado(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-2xl px-4 py-4 text-white font-bold text-base focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
+              value={selectedProductoId}
+              onChange={(e) => setSelectedProductoId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-3.5 focus:outline-hidden focus:border-slate-500 text-base"
             >
               {productos.map((prod) => (
                 <option key={prod.id_producto} value={prod.id_producto}>
-                  {prod.nombre} ({prod.categoria}) — Bs. {Number(prod.precio_actual).toFixed(2)}
+                  {prod.nombre} - Bs {Number(prod.precio_actual).toFixed(2)} (Stock: {prod.stock ?? 'N/A'})
                 </option>
               ))}
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Cantidad
-            </label>
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Cantidad</label>
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => setCantidad(Math.max(1, cantidad - 1))}
-                className="w-14 h-14 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-black text-2xl rounded-2xl border border-slate-700 flex items-center justify-center cursor-pointer"
+                className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-bold w-12 h-12 rounded-xl text-xl cursor-pointer"
               >
                 -
               </button>
@@ -95,28 +82,42 @@ const ModalConsumo = ({ mesa, productos, onClose, onAgregarConsumo, cargando }) 
                 min="1"
                 value={cantidad}
                 onChange={(e) => setCantidad(Math.max(1, parseInt(e.target.value) || 1))}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl py-3 text-center text-white font-black text-2xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-center font-extrabold text-slate-900 dark:text-white rounded-xl p-3 text-xl focus:outline-hidden"
               />
               <button
                 type="button"
                 onClick={() => setCantidad(cantidad + 1)}
-                className="w-14 h-14 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-black text-2xl rounded-2xl border border-slate-700 flex items-center justify-center cursor-pointer"
+                className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-bold w-12 h-12 rounded-xl text-xl cursor-pointer"
               >
                 +
               </button>
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={cargando}
-            className="w-full py-4 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-lg uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-amber-950/60 transition cursor-pointer mt-4"
-          >
-            <Plus className="w-6 h-6 stroke-[3]" />
-            AGREGAR COMANDA
-          </button>
-        </form>
+          {/* Subtotal */}
+          <div className="bg-slate-50 dark:bg-slate-900/80 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Subtotal del consumo:</span>
+            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">Bs {subtotal}</span>
+          </div>
 
+          {/* Acciones */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-base transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !selectedProductoId}
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-base transition-colors cursor-pointer shadow-md disabled:opacity-50"
+            >
+              {loading ? 'Guardando...' : 'Cargar a la Cuenta'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -1,23 +1,25 @@
-const express = require('express');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import dotenv from 'dotenv';
 
-const mesasRoutes = require('./routes/mesas.routes');
-const sesionesRoutes = require('./routes/sesiones.routes');
-const consumosRoutes = require('./routes/consumos.routes');
+dotenv.config();
+
+import authRoutes from './routes/auth.routes.js';
+import sesionesRoutes from './routes/sesiones.routes.js';
+import mesasRoutes from './routes/mesas.routes.js';
+import productosRoutes from './routes/productos.routes.js';
+import reportesRoutes from './routes/reportes.routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Middleware de seguridad y parsing
 app.use(cors());
 app.use(express.json());
 
-// REGLA DE NEGOCIO / TECNICA: Middleware de Rate Limiting (máximo 5 peticiones por segundo)
 const apiLimiter = rateLimit({
-  windowMs: 1000, // 1 segundo
-  max: 5, // Límite de 5 peticiones por ventana por IP
+  windowMs: 1000,
+  max: 20,
   message: {
     error: 'Demasiadas solicitudes simultáneas. Por favor intenta de nuevo en un segundo.',
     code: 'RATE_LIMIT_EXCEEDED'
@@ -29,11 +31,12 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // Rutas API
-app.use('/api/mesas', mesasRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/sesiones', sesionesRoutes);
-app.use('/api/consumos', consumosRoutes);
+app.use('/api/mesas', mesasRoutes);
+app.use('/api/productos', productosRoutes);
+app.use('/api/reportes', reportesRoutes);
 
-// Manejador de errores global
 app.use((err, req, res, next) => {
   console.error('[Error de Servidor]:', err);
   res.status(err.status || 500).json({
@@ -48,4 +51,4 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
-module.exports = app;
+export default app;
