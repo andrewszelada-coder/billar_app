@@ -108,10 +108,11 @@ export class SesionesController {
       if (errSesion || !sesion) return res.status(404).json({ error: 'Sesión no encontrada' });
       if (sesion.estado !== 'ACTIVA') return res.status(400).json({ error: 'La sesión no está activa para ser pausada' });
 
-      const horaInicio = new Date(sesion.hora_inicio).getTime();
+      const horaInicioStr = sesion.hora_inicio.endsWith('Z') ? sesion.hora_inicio : `${sesion.hora_inicio}Z`;
+      const horaInicio = new Date(horaInicioStr).getTime();
       const horaActual = new Date().getTime();
-      const tramoMinutos = Math.floor(Math.max(0, horaActual - horaInicio) / (1000 * 60));
-      const totalAcumulado = (sesion.minutos_acumulados || 0) + tramoMinutos;
+      const tramoMinutos = Math.max(0, horaActual - horaInicio) / (1000 * 60);
+      const totalAcumulado = Number((sesion.minutos_acumulados || 0)) + tramoMinutos;
 
       // Actualizar sesión a PAUSADA y guardar minutos
       const { error: errUpdateSesion } = await supabase
@@ -267,9 +268,10 @@ export class SesionesController {
 
       let minutosTramoActual = 0;
       if (sesion.estado === 'ACTIVA') {
-        const horaInicio = new Date(sesion.hora_inicio).getTime();
+        const horaInicioStr = sesion.hora_inicio.endsWith('Z') ? sesion.hora_inicio : `${sesion.hora_inicio}Z`;
+        const horaInicio = new Date(horaInicioStr).getTime();
         const horaActual = new Date().getTime();
-        minutosTramoActual = Math.floor(Math.max(0, horaActual - horaInicio) / (1000 * 60));
+        minutosTramoActual = Math.max(0, horaActual - horaInicio) / (1000 * 60);
       }
 
       const minutosTotales = (sesion.minutos_acumulados || 0) + minutosTramoActual;

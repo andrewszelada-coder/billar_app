@@ -48,13 +48,15 @@ const Dashboard = () => {
   // Configuración de Gracia Global
   const [configGracia, setConfigGracia] = useState({ habilitar_gracia: false, minutos_gracia: 3 });
 
-  // Datos principales
-  const [mesas, setMesas] = useState([
-    { id_mesa: 1, numero: 'Mesa 1', estado: 'LIBRE', tarifa_hora: 20, sesion_activa: null },
-    { id_mesa: 2, numero: 'Mesa 2', estado: 'LIBRE', tarifa_hora: 20, sesion_activa: null },
-    { id_mesa: 3, numero: 'Mesa 3', estado: 'LIBRE', tarifa_hora: 20, sesion_activa: null },
-    { id_mesa: 4, numero: 'Mesa 4', estado: 'LIBRE', tarifa_hora: 20, sesion_activa: null }
-  ]);
+  const [mesas, setMesas] = useState(
+    Array.from({ length: 7 }, (_, i) => ({
+      id_mesa: i + 1,
+      numero: `Mesa ${i + 1}`,
+      estado: 'LIBRE',
+      tarifa_hora: 20,
+      sesion_activa: null
+    }))
+  );
   const [productos, setProductos] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -71,7 +73,17 @@ const Dashboard = () => {
         getProductos().catch(() => []),
         getConfiguracion().catch(() => ({ habilitar_gracia: false, minutos_gracia: 3 }))
       ]);
-      if (dataMesas && dataMesas.length > 0) setMesas(dataMesas);
+      if (dataMesas && dataMesas.length > 0) {
+        setMesas(prevMesas => {
+          return dataMesas.map(newMesa => {
+            const oldMesa = prevMesas.find(m => m.id_mesa === newMesa.id_mesa);
+            if (oldMesa?.sesion_activa?.nombre_cliente && newMesa.sesion_activa) {
+              newMesa.sesion_activa.nombre_cliente = oldMesa.sesion_activa.nombre_cliente;
+            }
+            return newMesa;
+          });
+        });
+      }
       if (dataProductos && dataProductos.length > 0) setProductos(dataProductos);
       if (dataConfig) setConfigGracia(dataConfig);
     } catch (err) {
@@ -115,9 +127,16 @@ const Dashboard = () => {
   };
 
   // Acciones de Mesas
-  const handleStartHora = async (idMesa) => {
+  const handleStartHora = async (idMesa, nombreCliente) => {
     try {
-      await abrirMesa(idMesa);
+      await abrirMesa(idMesa); 
+      // Guardar temporalmente en el estado antes de que cargarDatos lo refresque
+      setMesas(prev => prev.map(m => 
+        m.id_mesa === idMesa ? { 
+          ...m, 
+          sesion_activa: { ...m.sesion_activa, nombre_cliente: nombreCliente } 
+        } : m
+      ));
       await cargarDatos();
     } catch (err) {
       setMesas((prev) =>
@@ -129,7 +148,8 @@ const Dashboard = () => {
                 sesion_activa: {
                   id_sesion: `demo-${Date.now()}`,
                   hora_inicio: new Date().toISOString(),
-                  minutos_acumulados: 0
+                  minutos_acumulados: 0,
+                  nombre_cliente: nombreCliente
                 }
               }
             : m
@@ -144,18 +164,23 @@ const Dashboard = () => {
       await cargarDatos();
     } catch (err) {
       setMesas((prev) =>
-        prev.map((m) =>
-          m.sesion_activa?.id_sesion === idSesion
-            ? {
-                ...m,
-                estado: 'PAUSADA',
-                sesion_activa: {
-                  ...m.sesion_activa,
-                  minutos_acumulados: (m.sesion_activa.minutos_acumulados || 0) + 15
-                }
+        prev.map((m) => {
+          if (m.sesion_activa?.id_sesion === idSesion) {
+            const horaInicio = new Date(m.sesion_activa.hora_inicio).getTime();
+            const horaActual = new Date().getTime();
+            // Eliminamos el Math.floor para conservar los segundos en formato decimal
+            const tramoMinutos = Math.max(0, horaActual - horaInicio) / (1000 * 60);
+            return {
+              ...m,
+              estado: 'PAUSADA',
+              sesion_activa: {
+                ...m.sesion_activa,
+                minutos_acumulados: (m.sesion_activa.minutos_acumulados || 0) + tramoMinutos
               }
-            : m
-        )
+            };
+          }
+          return m;
+        })
       );
     }
   };
@@ -265,7 +290,7 @@ const Dashboard = () => {
   const pausedCount = mesas.filter((m) => m.estado === 'PAUSADA').length;
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen font-sans flex flex-col transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans flex flex-col transition-colors">
       {/* Top Navbar */}
       <TopNavBar
         activeTab={activeTab}
@@ -279,7 +304,7 @@ const Dashboard = () => {
       {/* Contenido Principal según Tab Activa */}
       <main className="flex-1">
         {activeTab === 'mesas' && (
-          <div className="p-6 max-w-7xl mx-auto space-y-6">
+          <div className="p-6 w-full max-w-screen-2xl mx-auto space-y-6">
             {/* Resumen Superior Estilo SaaS */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
               <div>
@@ -300,8 +325,8 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Grid 100% Pantalla */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {/* Grid 100% Pantalla: En celdas de a 3 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-6">
               {mesas.map((mesa) => (
                 <MesaCard
                   key={mesa.id_mesa}

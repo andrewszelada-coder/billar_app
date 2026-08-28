@@ -3,15 +3,21 @@ import React, { useState, useEffect } from 'react';
 const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, onPause, onResume, onAddConsumo, onCheckout }) => {
   const { id_mesa, numero, estado, tarifa_hora, sesion_activa } = mesa;
   const [segundosTotales, setSegundosTotales] = useState(0);
+  const [nombreCliente, setNombreCliente] = useState('');
 
   useEffect(() => {
     let interval = null;
     if (estado === 'OCUPADA' && sesion_activa) {
       const updateTimer = () => {
-        const horaInicio = new Date(sesion_activa.hora_inicio).getTime();
+        // Asegurarse de que se interpreta como UTC (Supabase a veces no devuelve la 'Z')
+        const rawHora = sesion_activa.hora_inicio;
+        if (!rawHora) return;
+        const horaInicioStr = rawHora.endsWith('Z') ? rawHora : `${rawHora}Z`;
+        const horaInicio = new Date(horaInicioStr).getTime();
         const horaActual = new Date().getTime();
         const segundosActuales = Math.floor(Math.max(0, horaActual - horaInicio) / 1000);
-        const acumuladosSegundos = (sesion_activa.minutos_acumulados || 0) * 60;
+        // minutos_acumulados puede venir como decimal (ej: 0.5 = 30 seg)
+        const acumuladosSegundos = Math.floor((Number(sesion_activa.minutos_acumulados) || 0) * 60);
         setSegundosTotales(acumuladosSegundos + segundosActuales);
       };
 
@@ -31,7 +37,7 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
   const formatTiempoHHMMSS = (totalSecs) => {
     const hrs = Math.floor(totalSecs / 3600);
     const mins = Math.floor((totalSecs % 3600) / 60);
-    const secs = totalSecs % 60;
+    const secs = Math.floor(totalSecs % 60);
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -41,19 +47,19 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
     switch (estado) {
       case 'LIBRE':
         return {
-          cardBg: 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/80 hover:border-emerald-500 shadow-sm hover:shadow-md',
+          cardBg: 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/80 hover:border-emerald-500 shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1',
           badgeBg: 'bg-emerald-600 text-white',
           statusText: 'LIBRE'
         };
       case 'OCUPADA':
         return {
-          cardBg: 'bg-white dark:bg-slate-800 border-amber-500/50 dark:border-amber-600/50 shadow-md shadow-amber-500/5',
+          cardBg: 'bg-white dark:bg-slate-800 border-amber-500/50 dark:border-amber-600/50 shadow-md shadow-amber-500/5 hover:border-amber-500 hover:shadow-xl hover:shadow-amber-500/20 hover:-translate-y-1',
           badgeBg: 'bg-amber-600 text-white',
           statusText: 'OCUPADA'
         };
       case 'PAUSADA':
         return {
-          cardBg: 'bg-slate-50 dark:bg-slate-800/80 border-slate-300 dark:border-slate-600',
+          cardBg: 'bg-slate-50 dark:bg-slate-800/80 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-xl hover:-translate-y-1',
           badgeBg: 'bg-slate-600 text-slate-100',
           statusText: 'PAUSADA'
         };
@@ -69,12 +75,17 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
   const style = getBadgeStyle();
 
   return (
-    <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition-all space-y-4 ${style.cardBg}`}>
+    <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition-all duration-300 ease-in-out space-y-4 ${style.cardBg}`}>
       {/* Encabezado */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/80 pb-3">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{numero}</h2>
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tarifa: Bs {tarifa_hora}/hr</span>
+          {(estado === 'OCUPADA' || estado === 'PAUSADA') && sesion_activa?.nombre_cliente && (
+            <div className="mt-1 text-sm font-bold text-blue-600 dark:text-blue-400 truncate">
+              👤 {sesion_activa.nombre_cliente}
+            </div>
+          )}
         </div>
         <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase ${style.badgeBg}`}>
           {style.statusText}
@@ -95,14 +106,33 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
       </div>
 
       {/* Acciones */}
-      <div className="space-y-2 pt-1">
+      <div className="space-y-3 pt-1">
         {estado === 'LIBRE' && (
-          <button
-            onClick={() => onStart(id_mesa)}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3 rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-          >
-            <span>▶</span> Iniciar Hora
-          </button>
+          <div className="space-y-3">
+            <input
+              type="text"
+              placeholder="Nombre del cliente o grupo..."
+              value={nombreCliente}
+              onChange={(e) => setNombreCliente(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all placeholder:text-slate-400"
+            />
+            <button
+              onClick={() => {
+                if (nombreCliente.trim()) {
+                  onStart(id_mesa, nombreCliente);
+                  setNombreCliente('');
+                }
+              }}
+              disabled={!nombreCliente.trim()}
+              className={`w-full font-extrabold py-3 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-sm ${
+                nombreCliente.trim()
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                  : 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              <span>▶</span> Iniciar Hora
+            </button>
+          </div>
         )}
 
         {estado === 'OCUPADA' && (
