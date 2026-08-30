@@ -35,7 +35,15 @@ export class MesasController {
         .select('*')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '42501' || error.message?.includes('row-level security')) {
+          return res.status(403).json({
+            error: 'Permiso denegado por seguridad RLS en Supabase. Para solucionar, ejecuta en el SQL Editor de Supabase: ALTER TABLE mesas DISABLE ROW LEVEL SECURITY; o configura la variable SUPABASE_SERVICE_ROLE_KEY en el archivo .env del backend.',
+            code: 'RLS_VIOLATION'
+          });
+        }
+        throw error;
+      }
       return res.status(201).json(data);
     } catch (err) {
       next(err);

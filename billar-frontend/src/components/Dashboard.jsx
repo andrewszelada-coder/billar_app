@@ -7,6 +7,7 @@ import InventarioView from './InventarioView';
 import ReportesView from './ReportesView';
 import AjustesView from './AjustesView';
 import Login from './Login';
+import ErrorBoundary from './ErrorBoundary';
 import {
   getMesas,
   getProductos,
@@ -48,15 +49,7 @@ const Dashboard = () => {
   // Configuración de Gracia Global
   const [configGracia, setConfigGracia] = useState({ habilitar_gracia: false, minutos_gracia: 3 });
 
-  const [mesas, setMesas] = useState(
-    Array.from({ length: 7 }, (_, i) => ({
-      id_mesa: i + 1,
-      numero: `Mesa ${i + 1}`,
-      estado: 'LIBRE',
-      tarifa_hora: 20,
-      sesion_activa: null
-    }))
-  );
+  const [mesas, setMesas] = useState([]);
   const [productos, setProductos] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -74,15 +67,7 @@ const Dashboard = () => {
         getConfiguracion().catch(() => ({ habilitar_gracia: false, minutos_gracia: 3 }))
       ]);
       if (dataMesas && dataMesas.length > 0) {
-        setMesas(prevMesas => {
-          return dataMesas.map(newMesa => {
-            const oldMesa = prevMesas.find(m => m.id_mesa === newMesa.id_mesa);
-            if (oldMesa?.sesion_activa?.nombre_cliente && newMesa.sesion_activa) {
-              newMesa.sesion_activa.nombre_cliente = oldMesa.sesion_activa.nombre_cliente;
-            }
-            return newMesa;
-          });
-        });
+        setMesas(dataMesas.map(m => (m.estado === 'LIBRE' ? { ...m, sesion_activa: null } : m)));
       }
       if (dataProductos && dataProductos.length > 0) setProductos(dataProductos);
       if (dataConfig) setConfigGracia(dataConfig);
@@ -127,117 +112,153 @@ const Dashboard = () => {
   };
 
   // Acciones de Mesas
-  const handleStartHora = async (idMesa, nombreCliente) => {
+  const handleStartHora = async (idMesa, tarifaHora = 20) => {
+    if (!idMesa) {
+      alert('Error: El ID de la mesa es requerido');
+      return;
+    }
+    const safeIdMesa = String(idMesa).trim();
+
+    // Actualización optimista estricta solo para la mesa afectada por id_mesa
+    setMesas(prev => prev.map(m => 
+      String(m.id_mesa) === safeIdMesa ? { 
+        ...m,
+        estado: 'OCUPADA',
+        sesion_activa: { 
+          id_sesion: `temp-${Date.now()}`,
+          id_mesa: safeIdMesa,
+          hora_inicio: new Date().toISOString(), 
+          minutos_acumulados: 0
+        } 
+      } : m
+    ));
+
     try {
-      await abrirMesa(idMesa); 
-      // Guardar temporalmente en el estado antes de que cargarDatos lo refresque
-      setMesas(prev => prev.map(m => 
-        m.id_mesa === idMesa ? { 
-          ...m, 
-          sesion_activa: { ...m.sesion_activa, nombre_cliente: nombreCliente } 
-        } : m
-      ));
+      const res = await abrirMesa(safeIdMesa, tarifaHora);
+      console.log('[Frontend] Mesa abierta exitosamente (Respuesta API):', res);
+
+      const sesionReal = res?.sesion_activa || res?.sesion;
+      if (sesionReal) {
+        setMesas(prev => prev.map(m =>
+          String(m.id_mesa) === safeIdMesa ? {
+            ...m,
+            estado: 'OCUPADA',
+            sesion_activa: sesionReal
+          } : m
+        ));
+      }
       await cargarDatos();
     } catch (err) {
-      setMesas((prev) =>
-        prev.map((m) =>
-          m.id_mesa === idMesa
-            ? {
-                ...m,
-                estado: 'OCUPADA',
-                sesion_activa: {
-                  id_sesion: `demo-${Date.now()}`,
-                  hora_inicio: new Date().toISOString(),
-                  minutos_acumulados: 0,
-                  nombre_cliente: nombreCliente
-                }
-              }
-            : m
-        )
-      );
+      console.error('[Frontend] Error al abrir mesa en backend:', err);
+      const errMsg = err?.response?.data?.error || err?.message || 'Error al abrir la mesa';
+      alert(`Error al abrir mesa: ${errMsg}`);
+      await cargarDatos();
     }
   };
 
   const handlePausarHora = async (idSesion) => {
+    // Optimistic UI Update: Cambiar interfaz inmediatamente a PAUSADA
+    setMesas((prev) =>
+      prev.map((m) => {
+        if (m.sesion_activa?.id_sesion === idSesion) {
+          const rawHora = m.sesion_activa.hora_inicio;
+          const horaInicioStr = (typeof rawHora === 'string' && !rawHora.endsWith('Z') && !rawHora.includes('T')) ? `${rawHora}Z` : rawHora;
+          const horaInicio = new Date(horaInicioStr || Date.now()).getTime();
+          const horaActual = Date.now();
+          const tramoSegundos = (!isNaN(horaInicio) && horaInicio > 0) ? Math.max(0, Math.floor((horaActual - horaInicio) / 1000)) : 0;
+          const totalSegundos = (Number(m.sesion_activa.segundos_acumulados) || 0) + tramoSegundos;
+          return {
+            ...m,
+            estado: 'PAUSADA',
+            sesion_activa: {
+              ...m.sesion_activa,
+              estado: 'PAUSADA',
+              segundos_acumulados: totalSegundos
+            }
+          };
+        }
+        return m;
+      })
+    );
+
     try {
       await pausarMesa(idSesion);
       await cargarDatos();
     } catch (err) {
-      setMesas((prev) =>
-        prev.map((m) => {
-          if (m.sesion_activa?.id_sesion === idSesion) {
-            const horaInicio = new Date(m.sesion_activa.hora_inicio).getTime();
-            const horaActual = new Date().getTime();
-            // Eliminamos el Math.floor para conservar los segundos en formato decimal
-            const tramoMinutos = Math.max(0, horaActual - horaInicio) / (1000 * 60);
-            return {
-              ...m,
-              estado: 'PAUSADA',
-              sesion_activa: {
-                ...m.sesion_activa,
-                minutos_acumulados: (m.sesion_activa.minutos_acumulados || 0) + tramoMinutos
-              }
-            };
-          }
-          return m;
-        })
-      );
+      console.error('Error al pausar mesa en backend:', err);
+      await cargarDatos();
     }
   };
 
   const handleReanudarHora = async (idSesion) => {
+    // Optimistic UI Update: Cambiar interfaz inmediatamente a OCUPADA
+    setMesas((prev) =>
+      prev.map((m) => {
+        if (m.sesion_activa?.id_sesion === idSesion) {
+          return {
+            ...m,
+            estado: 'OCUPADA',
+            sesion_activa: {
+              ...m.sesion_activa,
+              estado: 'ACTIVA',
+              hora_inicio: new Date().toISOString()
+            }
+          };
+        }
+        return m;
+      })
+    );
+
     try {
       await reanudarMesa(idSesion);
       await cargarDatos();
     } catch (err) {
-      setMesas((prev) =>
-        prev.map((m) =>
-          m.sesion_activa?.id_sesion === idSesion
-            ? {
-                ...m,
-                estado: 'OCUPADA',
-                sesion_activa: {
-                  ...m.sesion_activa,
-                  hora_inicio: new Date().toISOString()
-                }
-              }
-            : m
-        )
-      );
+      console.error('Error al reanudar mesa en backend:', err);
+      await cargarDatos();
     }
   };
 
   const handleConfirmAddConsumo = async (datosConsumo) => {
-    try {
-      await agregarConsumo(datosConsumo);
-      await cargarDatos();
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await agregarConsumo(datosConsumo);
+    await cargarDatos();
+    return res;
   };
 
   const handlePrepareCheckout = async (mesaTarget) => {
+    if (!mesaTarget) return;
     const sesionId = mesaTarget.sesion_activa?.id_sesion;
     setModalCobroMesa(mesaTarget);
 
     try {
-      let consumos = [];
-      if (sesionId && !String(sesionId).startsWith('demo-')) {
-        consumos = await getConsumosSesion(sesionId).catch(() => []);
+      let consumos = mesaTarget.sesion_activa?.consumos || [];
+      if (sesionId && !String(sesionId).startsWith('demo-') && !String(sesionId).startsWith('temp-')) {
+        try {
+          const fetched = await getConsumosSesion(sesionId);
+          if (Array.isArray(fetched) && fetched.length > 0) {
+            consumos = fetched;
+          }
+        } catch (e) {
+          console.warn('[Dashboard] Error obteniendo consumos de API:', e);
+        }
       }
 
-      const horaInicio = new Date(mesaTarget.sesion_activa?.hora_inicio || Date.now()).getTime();
+      const rawHora = mesaTarget.sesion_activa?.hora_inicio;
+      const horaInicioStr = (typeof rawHora === 'string' && !rawHora.endsWith('Z') && !rawHora.includes('T')) ? `${rawHora}Z` : rawHora;
+      const horaInicio = new Date(horaInicioStr || Date.now()).getTime();
       const horaActual = Date.now();
-      const tramoMins = Math.floor(Math.max(0, horaActual - horaInicio) / (1000 * 60));
-      const totalMins = (mesaTarget.sesion_activa?.minutos_acumulados || 0) + tramoMins;
-      const tarifa = mesaTarget.tarifa_hora || 20;
+      const tramoSegundos = (mesaTarget.estado === 'OCUPADA' && !isNaN(horaInicio) && horaInicio > 0)
+        ? Math.max(0, Math.floor((horaActual - horaInicio) / 1000))
+        : 0;
+      const totalSegundos = (Number(mesaTarget.sesion_activa?.segundos_acumulados) || 0) + tramoSegundos;
+      const totalMins = Math.floor(totalSegundos / 60);
+      const tarifa = Number(mesaTarget.tarifa_hora || 20);
 
       let totalTiempo = 0;
       const tieneGraciaActiva = configGracia?.habilitar_gracia;
       const minsGracia = configGracia?.minutos_gracia || 3;
 
       if (!tieneGraciaActiva || totalMins > minsGracia) {
-        totalTiempo = Number(((totalMins / 60) * tarifa).toFixed(2));
+        totalTiempo = Number(((totalSegundos / 3600) * tarifa).toFixed(2));
       }
 
       const totalConsumos = (consumos || []).reduce((acc, c) => acc + Number(c.subtotal || 0), 0);
@@ -247,38 +268,42 @@ const Dashboard = () => {
         total_tiempo: totalTiempo,
         total_consumos: totalConsumos,
         total_pagar: Number((totalTiempo + totalConsumos).toFixed(2)),
-        consumos
+        consumos: consumos || []
       });
     } catch (err) {
+      console.error('Error al preparar cobro:', err);
       setResumenCobro({
-        minutos_jugados: 45,
-        total_tiempo: 15.0,
+        minutos_jugados: 0,
+        total_tiempo: 0,
         total_consumos: 0,
-        total_pagar: 15.0,
+        total_pagar: 0,
         consumos: []
       });
     }
   };
 
   const handleConfirmCheckout = async (mesaTarget, metodoPago) => {
-    const sesionId = mesaTarget.sesion_activa?.id_sesion;
-    try {
-      if (sesionId && !String(sesionId).startsWith('demo-')) {
-        await cobrarMesa({ id_sesion: sesionId, metodo_pago: metodoPago });
-      }
-      setMesas((prev) =>
-        prev.map((m) => (m.id_mesa === mesaTarget.id_mesa ? { ...m, estado: 'LIBRE', sesion_activa: null } : m))
-      );
-      setModalCobroMesa(null);
-      setResumenCobro(null);
-      await cargarDatos();
-    } catch (err) {
-      setMesas((prev) =>
-        prev.map((m) => (m.id_mesa === mesaTarget.id_mesa ? { ...m, estado: 'LIBRE', sesion_activa: null } : m))
-      );
-      setModalCobroMesa(null);
-      setResumenCobro(null);
+    if (!mesaTarget) return;
+    const sesionId = mesaTarget?.sesion_activa?.id_sesion;
+    const targetIdMesa = String(mesaTarget?.id_mesa || mesaTarget?.id);
+
+    // 1. Ejecutar petición de cobro primero en el backend
+    if (sesionId && !String(sesionId).startsWith('demo-') && !String(sesionId).startsWith('temp-')) {
+      const resCobro = await cobrarMesa({ id_sesion: sesionId, metodo_pago: metodoPago });
+      console.log('[Dashboard] Cobro completado con éxito:', resCobro);
     }
+
+    // 2. Solo al tener éxito en el backend, actualizar estado local y cerrar el modal
+    setMesas((prev) =>
+      prev.map((m) => {
+        const currentId = String(m?.id_mesa || m?.id);
+        return currentId === targetIdMesa ? { ...m, estado: 'LIBRE', sesion_activa: null } : m;
+      })
+    );
+
+    setModalCobroMesa(null);
+    setResumenCobro(null);
+    await cargarDatos();
   };
 
   if (!session) {
@@ -326,21 +351,38 @@ const Dashboard = () => {
             </div>
 
             {/* Grid 100% Pantalla: En celdas de a 3 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-              {mesas.map((mesa) => (
-                <MesaCard
-                  key={mesa.id_mesa}
-                  mesa={mesa}
-                  habilitarGracia={configGracia.habilitar_gracia}
-                  minutosGracia={configGracia.minutos_gracia}
-                  onStart={handleStartHora}
-                  onPause={handlePausarHora}
-                  onResume={handleReanudarHora}
-                  onAddConsumo={(m) => setModalConsumoMesa(m)}
-                  onCheckout={handlePrepareCheckout}
-                />
-              ))}
-            </div>
+            {loading && mesas.length === 0 ? (
+              <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-12 text-center space-y-3">
+                <div className="text-4xl animate-bounce">🎱</div>
+                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200">Cargando estado de mesas...</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Conectando directamente con la base de datos de Supabase</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+                {mesas.map((mesa, idx) => {
+                  const safeId = String(mesa?.id_mesa ?? mesa?.id ?? (idx + 1)).trim();
+                  const mesaSanitizada = {
+                    ...mesa,
+                    id_mesa: safeId
+                  };
+                  return (
+                    <ErrorBoundary key={safeId}>
+                      <MesaCard
+                        mesa={mesaSanitizada}
+                        id_mesa={safeId}
+                        habilitarGracia={configGracia.habilitar_gracia}
+                        minutosGracia={configGracia.minutos_gracia}
+                        onStart={handleStartHora}
+                        onPause={handlePausarHora}
+                        onResume={handleReanudarHora}
+                        onAddConsumo={(m) => setModalConsumoMesa(m)}
+                        onCheckout={handlePrepareCheckout}
+                      />
+                    </ErrorBoundary>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

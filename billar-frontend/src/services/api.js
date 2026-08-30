@@ -70,8 +70,16 @@ export const guardarConfiguracion = async (config) => {
 };
 
 // Sesiones
-export const abrirMesa = async (id_mesa) => {
-  const response = await api.post('/sesiones/abrir', { id_mesa: Number(id_mesa) });
+export const abrirMesa = async (id_mesa, tarifa_aplicada) => {
+  if (!id_mesa) {
+    throw new Error('El parámetro id_mesa es requerido');
+  }
+  const payload = {
+    id_mesa: String(id_mesa).trim(),
+    tarifa_aplicada: Number(tarifa_aplicada || 20)
+  };
+  console.log('[api.js] Enviando payload a POST /sesiones/abrir:', payload);
+  const response = await api.post('/sesiones/abrir', payload);
   return response.data;
 };
 
@@ -88,7 +96,7 @@ export const reanudarMesa = async (id_sesion) => {
 export const agregarConsumo = async ({ id_sesion, id_producto, cantidad }) => {
   const response = await api.post('/sesiones/consumo', {
     id_sesion,
-    id_producto: Number(id_producto),
+    id_producto: String(id_producto).trim(),
     cantidad: Number(cantidad)
   });
   return response.data;

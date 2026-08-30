@@ -1,47 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import useTimer from '../hooks/useTimer';
 
-const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, onPause, onResume, onAddConsumo, onCheckout }) => {
-  const { id_mesa, numero, estado, tarifa_hora, sesion_activa } = mesa;
-  const [segundosTotales, setSegundosTotales] = useState(0);
-  const [nombreCliente, setNombreCliente] = useState('');
+const MesaCard = ({
+  mesa = {},
+  id_mesa: id_mesa_prop,
+  habilitarGracia = false,
+  minutosGracia = 3,
+  onStart,
+  onPause,
+  onResume,
+  onAddConsumo,
+  onCheckout
+}) => {
+  const id_mesa = id_mesa_prop ?? mesa?.id_mesa ?? mesa?.id;
+  const { numero, estado, tarifa_hora, sesion_activa } = mesa ?? {};
 
-  useEffect(() => {
-    let interval = null;
-    if (estado === 'OCUPADA' && sesion_activa) {
-      const updateTimer = () => {
-        // Asegurarse de que se interpreta como UTC (Supabase a veces no devuelve la 'Z')
-        const rawHora = sesion_activa.hora_inicio;
-        if (!rawHora) return;
-        const horaInicioStr = rawHora.endsWith('Z') ? rawHora : `${rawHora}Z`;
-        const horaInicio = new Date(horaInicioStr).getTime();
-        const horaActual = new Date().getTime();
-        const segundosActuales = Math.floor(Math.max(0, horaActual - horaInicio) / 1000);
-        // minutos_acumulados puede venir como decimal (ej: 0.5 = 30 seg)
-        const acumuladosSegundos = Math.floor((Number(sesion_activa.minutos_acumulados) || 0) * 60);
-        setSegundosTotales(acumuladosSegundos + segundosActuales);
-      };
-
-      updateTimer();
-      interval = setInterval(updateTimer, 1000); // Actualización segundo a segundo
-    } else if (estado === 'PAUSADA' && sesion_activa) {
-      setSegundosTotales((sesion_activa.minutos_acumulados || 0) * 60);
-    } else {
-      setSegundosTotales(0);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [estado, sesion_activa]);
-
-  const formatTiempoHHMMSS = (totalSecs) => {
-    const hrs = Math.floor(totalSecs / 3600);
-    const mins = Math.floor((totalSecs % 3600) / 60);
-    const secs = Math.floor(totalSecs % 60);
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const minutosTranscurridos = Math.floor(segundosTotales / 60);
+  // Usar el custom hook useTimer alimentándose 100% de la sesion_activa del backend
+  const { formattedTime, totalMinutes } = useTimer(
+    sesion_activa?.hora_inicio,
+    sesion_activa?.segundos_acumulados ?? 0,
+    estado
+  );
 
   const getBadgeStyle = () => {
     switch (estado) {
@@ -67,7 +46,7 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
         return {
           cardBg: 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700',
           badgeBg: 'bg-slate-700 text-white',
-          statusText: estado
+          statusText: estado ?? 'LIBRE'
         };
     }
   };
@@ -79,13 +58,8 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
       {/* Encabezado */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/80 pb-3">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{numero}</h2>
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tarifa: Bs {tarifa_hora}/hr</span>
-          {(estado === 'OCUPADA' || estado === 'PAUSADA') && sesion_activa?.nombre_cliente && (
-            <div className="mt-1 text-sm font-bold text-blue-600 dark:text-blue-400 truncate">
-              👤 {sesion_activa.nombre_cliente}
-            </div>
-          )}
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{numero ?? `Mesa ${id_mesa ?? ''}`}</h2>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tarifa: Bs {tarifa_hora ?? 0}/hr</span>
         </div>
         <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase ${style.badgeBg}`}>
           {style.statusText}
@@ -96,9 +70,9 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
       <div className="bg-slate-50 dark:bg-slate-900/80 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/60 text-center space-y-1">
         <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Tiempo Transcurrido</span>
         <div className="text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400 tracking-wider">
-          {formatTiempoHHMMSS(segundosTotales)}
+          {formattedTime}
         </div>
-        {habilitarGracia && estado === 'OCUPADA' && minutosTranscurridos <= minutosGracia && (
+        {habilitarGracia && estado === 'OCUPADA' && totalMinutes <= minutosGracia && (
           <span className="inline-block text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
             Gracia Inicial ({minutosGracia} min)
           </span>
@@ -108,49 +82,38 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
       {/* Acciones */}
       <div className="space-y-3 pt-1">
         {estado === 'LIBRE' && (
-          <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Nombre del cliente o grupo..."
-              value={nombreCliente}
-              onChange={(e) => setNombreCliente(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all placeholder:text-slate-400"
-            />
-            <button
-              onClick={() => {
-                if (nombreCliente.trim()) {
-                  onStart(id_mesa, nombreCliente);
-                  setNombreCliente('');
-                }
-              }}
-              disabled={!nombreCliente.trim()}
-              className={`w-full font-extrabold py-3 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-sm ${
-                nombreCliente.trim()
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
-                  : 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              <span>▶</span> Iniciar Hora
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              const targetIdMesa = String(id_mesa || mesa?.id_mesa || mesa?.id || '').trim();
+              if (targetIdMesa) {
+                onStart?.(targetIdMesa, tarifa_hora);
+              } else {
+                console.error('[MesaCard] Error: id_mesa no fue encontrado:', { id_mesa_prop, id_mesa, mesa });
+                alert('Error al obtener el ID de la mesa.');
+              }
+            }}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer hover:scale-[1.01]"
+          >
+            <span>▶</span> Iniciar Hora
+          </button>
         )}
 
         {estado === 'OCUPADA' && (
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => onPause(sesion_activa?.id_sesion)}
+              onClick={() => sesion_activa?.id_sesion && onPause?.(sesion_activa.id_sesion)}
               className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 border border-slate-300 dark:border-slate-600"
             >
               <span>⏸</span> Pausar
             </button>
             <button
-              onClick={() => onAddConsumo(mesa)}
+              onClick={() => onAddConsumo?.(mesa)}
               className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
             >
               <span>🥤</span> + Consumo
             </button>
             <button
-              onClick={() => onCheckout(mesa)}
+              onClick={() => onCheckout?.(mesa)}
               className="col-span-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold py-2.5 rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
             >
               <span>🏁</span> Cobrar Mesa
@@ -161,19 +124,19 @@ const MesaCard = ({ mesa, habilitarGracia = false, minutosGracia = 3, onStart, o
         {estado === 'PAUSADA' && (
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => onResume(sesion_activa?.id_sesion)}
+              onClick={() => sesion_activa?.id_sesion && onResume?.(sesion_activa.id_sesion)}
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-sm"
             >
               <span>▶</span> Reanudar
             </button>
             <button
-              onClick={() => onAddConsumo(mesa)}
+              onClick={() => onAddConsumo?.(mesa)}
               className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
             >
               <span>🥤</span> + Consumo
             </button>
             <button
-              onClick={() => onCheckout(mesa)}
+              onClick={() => onCheckout?.(mesa)}
               className="col-span-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold py-2.5 rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
             >
               <span>🏁</span> Cobrar Mesa
