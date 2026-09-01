@@ -1,83 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { getReportesDashboard, getMesas } from '../services/api';
+import React, { useState } from 'react';
+import { useReportes } from '../hooks/useReportes';
+import { formatearFecha } from '../utils/dateUtils';
 
 const ReportesView = () => {
-  const [data, setData] = useState({
-    dia: { tiempo: 0, consumos: 0, total: 0 },
-    semana: { tiempo: 0, consumos: 0, total: 0 },
-    mes: { tiempo: 0, consumos: 0, total: 0 },
-    totalSesiones: 0,
-    sesionesDetalle: []
-  });
-  const [mesasMap, setMesasMap] = useState({});
-  const [loading, setLoading] = useState(true);
+  const { data, loading, mesasMap, sesionesPorMesa, mesasIdsOrdenadas } = useReportes();
   const [expandedMesa, setExpandedMesa] = useState(null);
-
-  useEffect(() => {
-    const fetchReportes = async () => {
-      try {
-        setLoading(true);
-        const [report, mesasData] = await Promise.all([
-          getReportesDashboard(),
-          getMesas()
-        ]);
-        
-        if (report) setData(report);
-        
-        if (mesasData) {
-          const map = {};
-          mesasData.forEach(m => {
-            const id = String(m.id_mesa || m.id);
-            map[id] = m.numero || `Mesa ${id}`;
-          });
-          setMesasMap(map);
-        }
-      } catch (err) {
-        console.error('Error al cargar reportes:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchReportes();
-  }, []);
-
-  // Agrupar sesiones por mesa
-  const sesionesPorMesa = data.sesionesDetalle.reduce((acc, sesion) => {
-    const id = String(sesion.id_mesa);
-    if (!acc[id]) acc[id] = [];
-    acc[id].push(sesion);
-    return acc;
-  }, {});
-
-  // Ordenar mesas numéricamente/alfabéticamente
-  const mesasIdsOrdenadas = Object.keys(sesionesPorMesa).sort((a, b) => {
-    const nameA = mesasMap[a] || `Mesa ${a}`;
-    const nameB = mesasMap[b] || `Mesa ${b}`;
-    return String(nameA).localeCompare(String(nameB), undefined, { numeric: true, sensitivity: 'base' });
-  });
-
-  const formatearFecha = (fechaStr, fallbackStr) => {
-    const target = fechaStr || fallbackStr;
-    if (!target) return 'N/A';
-    
-    let dateStr = target;
-    // Solo agregamos la 'Z' si NO termina en Z y NO tiene un offset de zona horaria (ej. +00:00 o -04:00)
-    if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !dateStr.match(/[+-]\d{2}:?\d{2}$/)) {
-      dateStr += 'Z';
-    }
-    
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return 'N/A';
-    
-    // Formato amigable: 31/08/2026, 20:01
-    return date.toLocaleString(undefined, { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto text-slate-800 dark:text-slate-100">
@@ -206,7 +133,7 @@ const ReportesView = () => {
                                   const totalTiempo = Number(sesion.total_tiempo || 0);
                                   const totalConsumos = Number(sesion.total_consumos || 0);
                                   const totalPagado = totalTiempo + totalConsumos;
-                                  // Convertir segundos a horas y minutos para mostrar más lindo
+                                  
                                   const segs = Number(sesion.segundos_acumulados || 0);
                                   const hrs = Math.floor(segs / 3600);
                                   const mins = Math.floor((segs % 3600) / 60);
