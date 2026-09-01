@@ -1,27 +1,117 @@
-const db = require('../config/db');
+import { supabase } from '../config/supabase.js';
 
-class MesasController {
-  async listarMesas(req, res, next) {
+export class MesasController {
+  // GET /api/mesas -> Listar mesas
+  async listar(req, res, next) {
     try {
-      const query = `
-        SELECT 
-          m.id,
-          m.numero,
-          m.nombre,
-          m.estado,
-          m.tarifa_hora,
-          s.id AS sesion_activa_id,
-          s.hora_inicio
-        FROM mesas m
-        LEFT JOIN sesiones s ON s.mesa_id = m.id AND s.estado = 'ACTIVA'
-        ORDER BY m.id ASC;
-      `;
-      const result = await db.query(query);
-      res.json(result.rows);
-    } catch (error) {
-      next(error);
+      const { data, error } = await supabase
+        .from('mesas')
+        .select('*')
+        .order('id_mesa', { ascending: true });
+
+      if (error) throw error;
+      return res.json(data || []);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // POST /api/mesas -> Crear nueva mesa
+  async crear(req, res, next) {
+    try {
+      const { numero, tipo = 'Pool', tarifa_hora = 20 } = req.body;
+      if (!numero) {
+        return res.status(400).json({ error: 'El número o nombre de la mesa es requerido' });
+      }
+
+      const { data, error } = await supabase
+        .from('mesas')
+        .insert([{
+          numero,
+          tipo: tipo || 'Pool',
+          tarifa_hora: Number(tarifa_hora),
+          estado: 'LIBRE'
+        }])
+        .select('*')
+        .single();
+
+      if (error) {
+        if (error.code === '42501' || error.message?.includes('row-level security')) {
+          return res.status(403).json({
+            error: 'Permiso denegado por seguridad RLS en Supabase. Para solucionar, ejecuta en el SQL Editor de Supabase: ALTER TABLE mesas DISABLE ROW LEVEL SECURITY; o configura la variable SUPABASE_SERVICE_ROLE_KEY en el archivo .env del backend.',
+            code: 'RLS_VIOLATION'
+          });
+        }
+        throw error;
+      }
+      return res.status(201).json(data);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // PUT /api/mesas/:id -> Actualizar mesa (nombre, tipo o tarifa)
+  async actualizar(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { numero, tipo, tarifa_hora, estado } = req.body;
+
+      const updates = {};
+      if (numero !== undefined) updates.numero = numero;
+      if (tipo !== undefined) updates.tipo = tipo;
+      if (tarifa_hora !== undefined) updates.tarifa_hora = Number(tarifa_hora);
+      if (estado !== undefined) updates.estado = estado;
+
+      const { data, error } = await supabase
+        .from('mesas')
+        .update(updates)
+        .eq('id_mesa', id)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      return res.json(data);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // DELETE /api/mesas/:id -> Eliminar mesa
+  async eliminar(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { error } = await supabase
+        .from('mesas')
+        .delete()
+        .eq('id_mesa', id);
+
+      if (error) throw error;
+      return res.json({ mensaje: 'Mesa eliminada exitosamente' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // POST /api/mesas/tarifa-global -> Actualizar tarifa a todas las mesas
+  async actualizarTarifaGlobal(req, res, next) {
+    try {
+      const { tarifa_hora } = req.body;
+      if (!tarifa_hora || Number(tarifa_hora) <= 0) {
+        return res.status(400).json({ error: 'Tarifa inválida' });
+      }
+
+      const { data, error } = await supabase
+        .from('mesas')
+        .update({ tarifa_hora: Number(tarifa_hora) })
+        .neq('id_mesa', 0)
+        .select('*');
+
+      if (error) throw error;
+      return res.json({ mensaje: 'Tarifa global actualizada exitosamente', mesas: data });
+    } catch (err) {
+      next(err);
     }
   }
 }
 
-module.exports = new MesasController();
+export default new MesasController();
