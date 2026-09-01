@@ -227,7 +227,13 @@ const AjustesView = ({ mesas, onReloadMesas }) => {
                   required
                   placeholder="Ej. Mesa 5"
                   value={nuevaMesaNombre}
-                  onChange={(e) => setNuevaMesaNombre(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s.\-]*$/.test(val) && val.length <= 25) {
+                      setNuevaMesaNombre(val);
+                    }
+                  }}
+                  maxLength={25}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-3 text-sm focus:outline-hidden"
                 />
               </div>
@@ -350,7 +356,13 @@ const AjustesView = ({ mesas, onReloadMesas }) => {
                   type="text"
                   required
                   value={editNombre}
-                  onChange={(e) => setEditNombre(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s.\-]*$/.test(val) && val.length <= 25) {
+                      setEditNombre(val);
+                    }
+                  }}
+                  maxLength={25}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-3 text-base"
                 />
               </div>

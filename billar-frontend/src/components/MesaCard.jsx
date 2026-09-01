@@ -53,6 +53,15 @@ const MesaCard = ({
 
   const style = getBadgeStyle();
 
+  const formatHoraInicio = () => {
+    if (!sesion_activa?.hora_inicio) return '';
+    const rawHora = sesion_activa.hora_inicio;
+    const horaInicioStr = (typeof rawHora === 'string' && !rawHora.endsWith('Z') && !rawHora.includes('T')) ? `${rawHora}Z` : rawHora;
+    const date = new Date(horaInicioStr);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <div className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition-all duration-300 ease-in-out space-y-4 ${style.cardBg}`}>
       {/* Encabezado */}
@@ -76,6 +85,11 @@ const MesaCard = ({
           <span className="inline-block text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
             Gracia Inicial ({minutosGracia} min)
           </span>
+        )}
+        {(estado === 'OCUPADA' || estado === 'PAUSADA') && sesion_activa?.hora_inicio && (
+          <div className="pt-1 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+            Iniciado a las: {formatHoraInicio()}
+          </div>
         )}
       </div>
 

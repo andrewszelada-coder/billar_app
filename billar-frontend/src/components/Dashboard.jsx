@@ -67,7 +67,10 @@ const Dashboard = () => {
         getConfiguracion().catch(() => ({ habilitar_gracia: false, minutos_gracia: 3 }))
       ]);
       if (dataMesas && dataMesas.length > 0) {
-        setMesas(dataMesas.map(m => (m.estado === 'LIBRE' ? { ...m, sesion_activa: null } : m)));
+        const sortedMesas = dataMesas.sort((a, b) => 
+          String(a.numero || '').localeCompare(String(b.numero || ''), undefined, { numeric: true, sensitivity: 'base' })
+        );
+        setMesas(sortedMesas.map(m => (m.estado === 'LIBRE' ? { ...m, sesion_activa: null } : m)));
       }
       if (dataProductos && dataProductos.length > 0) setProductos(dataProductos);
       if (dataConfig) setConfigGracia(dataConfig);
