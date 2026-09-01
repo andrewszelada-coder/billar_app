@@ -180,7 +180,13 @@ const InventarioView = ({ productos, onReload }) => {
                   type="text"
                   required
                   value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s.\-]*$/.test(val) && val.length <= 25) {
+                      setNombre(val);
+                    }
+                  }}
+                  maxLength={25}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl p-3 text-base"
                 />
               </div>

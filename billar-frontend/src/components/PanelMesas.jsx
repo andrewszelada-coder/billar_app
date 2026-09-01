@@ -24,7 +24,10 @@ const PanelMesas = ({ onActualizarRecaudado }) => {
         getMesas(),
         getProductos()
       ]);
-      setMesas(dataMesas);
+      const sortedMesas = dataMesas.sort((a, b) => 
+        String(a.numero || '').localeCompare(String(b.numero || ''), undefined, { numeric: true, sensitivity: 'base' })
+      );
+      setMesas(sortedMesas);
       setProductos(dataProductos);
     } catch (err) {
       console.error('Error cargando mesas o productos:', err);

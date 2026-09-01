@@ -57,7 +57,8 @@ export class ReportesController {
           consumos: Number(mesConsumos.toFixed(2)),
           total: Number((mesTiempo + mesConsumos).toFixed(2))
         },
-        totalSesiones: (sesiones || []).length
+        totalSesiones: (sesiones || []).length,
+        sesionesDetalle: sesiones || []
       });
     } catch (err) {
       next(err);
